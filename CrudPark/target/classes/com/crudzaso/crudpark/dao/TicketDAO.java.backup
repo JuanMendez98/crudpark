@@ -1,0 +1,144 @@
+package com.crudzaso.crudpark.dao;
+
+import com.crudzaso.crudpark.config.DatabaseConnection;
+import com.crudzaso.crudpark.model.Ticket;
+import com.crudzaso.crudpark.model.TipoCliente;
+
+import java.sql.*;
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * DAO para gestionar operaciones de la tabla tickets
+ */
+public class TicketDAO {
+
+    public Integer insert(Ticket ticket) {
+        String sql = "INSERT INTO tickets (placa, tipo_cliente, fecha_ingreso, operador_id) " +
+                "VALUES (?, ?::tipo_cliente, ?, ?) RETURNING id";
+
+        try (Connection conn = DatabaseConnection.getInstance().getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+
+            stmt.setString(1, ticket.getPlaca());
+            stmt.setString(2, ticket.getTipoCliente().name());
+            stmt.setTimestamp(3, ticket.getFechaIngreso());
+            stmt.setInt(4, ticket.getOperadorId());
+
+            ResultSet rs = stmt.executeQuery();
+            if (rs.next()) {
+                return rs.getInt(1);
+            }
+
+        } catch (SQLException e) {
+            System.err.println("Error al insertar ticket: " + e.getMessage());
+        }
+
+        return null;
+    }
+
+    public Ticket findTicketAbiertoByPlaca(String placa) {
+        String sql = "SELECT id, placa, tipo_cliente, fecha_ingreso, fecha_salida, " +
+                "operador_id, tiempo_estadia " +
+                "FROM tickets " +
+                "WHERE placa = ? AND fecha_salida IS NULL";
+
+        try (Connection conn = DatabaseConnection.getInstance().getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+
+            stmt.setString(1, placa);
+            ResultSet rs = stmt.executeQuery();
+
+            if (rs.next()) {
+                return mapResultSetToTicket(rs);
+            }
+
+        } catch (SQLException e) {
+            System.err.println("Error al buscar ticket abierto: " + e.getMessage());
+        }
+
+        return null;
+    }
+
+    public boolean updateSalida(int ticketId, Timestamp fechaSalida, int tiempoEstadia) {
+        String sql = "UPDATE tickets SET fecha_salida = ?, tiempo_estadia = ? WHERE id = ?";
+
+        try (Connection conn = DatabaseConnection.getInstance().getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+
+            stmt.setTimestamp(1, fechaSalida);
+            stmt.setInt(2, tiempoEstadia);
+            stmt.setInt(3, ticketId);
+
+            int rowsAffected = stmt.executeUpdate();
+            return rowsAffected > 0;
+
+        } catch (SQLException e) {
+            System.err.println("Error al actualizar salida de ticket: " + e.getMessage());
+            return false;
+        }
+    }
+
+    public Ticket findById(int id) {
+        String sql = "SELECT id, placa, tipo_cliente, fecha_ingreso, fecha_salida, " +
+                "operador_id, tiempo_estadia " +
+                "FROM tickets WHERE id = ?";
+
+        try (Connection conn = DatabaseConnection.getInstance().getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+
+            stmt.setInt(1, id);
+            ResultSet rs = stmt.executeQuery();
+
+            if (rs.next()) {
+                return mapResultSetToTicket(rs);
+            }
+
+        } catch (SQLException e) {
+            System.err.println("Error al buscar ticket por ID: " + e.getMessage());
+        }
+
+        return null;
+    }
+
+    public List<Ticket> findTicketsAbiertos() {
+        String sql = "SELECT id, placa, tipo_cliente, fecha_ingreso, fecha_salida, " +
+                "operador_id, tiempo_estadia " +
+                "FROM tickets " +
+                "WHERE fecha_salida IS NULL " +
+                "ORDER BY fecha_ingreso DESC";
+
+        List<Ticket> tickets = new ArrayList<>();
+
+        try (Connection conn = DatabaseConnection.getInstance().getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql);
+             ResultSet rs = stmt.executeQuery()) {
+
+            while (rs.next()) {
+                tickets.add(mapResultSetToTicket(rs));
+            }
+
+        } catch (SQLException e) {
+            System.err.println("Error al buscar tickets abiertos: " + e.getMessage());
+        }
+
+        return tickets;
+    }
+
+    private Ticket mapResultSetToTicket(ResultSet rs) throws SQLException {
+        Ticket ticket = new Ticket();
+        ticket.setId(rs.getInt("id"));
+        ticket.setPlaca(rs.getString("placa"));
+        ticket.setTipoCliente(TipoCliente.valueOf(rs.getString("tipo_cliente")));
+        ticket.setFechaIngreso(rs.getTimestamp("fecha_ingreso"));
+        ticket.setFechaSalida(rs.getTimestamp("fecha_salida"));
+        ticket.setOperadorId(rs.getInt("operador_id"));
+
+        Integer tiempoEstadia = rs.getInt("tiempo_estadia");
+        if (!rs.wasNull()) {
+            ticket.setTiempoEstadia(tiempoEstadia);
+        }
+
+        return ticket;
+    }
+}
